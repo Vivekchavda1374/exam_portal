@@ -1,0 +1,189 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:canvas_2/admin_drawer_widget.dart'; // Import your reusable AdminDrawer widget
+
+class SubjectQuizPage extends StatefulWidget {
+  @override
+  _SubjectQuizPageState createState() => _SubjectQuizPageState();
+}
+
+class _SubjectQuizPageState extends State<SubjectQuizPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String username = "Loading...";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUsername(); // Fetch the username when the widget is initialized
+  }
+
+  Future<void> _fetchUsername() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          setState(() {
+            username = userDoc.data()?['username'] ?? "Unknown User";
+          });
+        } else {
+          setState(() {
+            username = "User Not Found";
+          });
+        }
+      }
+    } catch (e) {
+      print("Error fetching username: $e");
+      setState(() {
+        username = "Error";
+      });
+    }
+  }
+
+  // Fetch subjects from Firestore
+  Future<List<Map<String, dynamic>>> _fetchSubjects() async {
+    final subjectsSnapshot = await _firestore.collection('subjects').get();
+    return subjectsSnapshot.docs.map((doc) {
+      return {
+        'id': doc.id,
+        'name': doc['name'],
+      };
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Subjects"),
+        backgroundColor: Color.fromARGB(255, 245, 181, 51), // Yellow app bar
+      ),
+      drawer: AdminDrawer(username: username), // Reusable Admin Drawer
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _fetchSubjects(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text("Error fetching data."));
+          }
+
+          final subjects = snapshot.data!;
+          return GridView.builder(
+            padding: EdgeInsets.all(16.0),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2, // Keep 2 columns
+              crossAxisSpacing: 35.0, // Increase horizontal space between boxes
+              mainAxisSpacing: 35.0, // Increase vertical space between rows
+              childAspectRatio: 4,
+            ),
+            itemCount: subjects.length,
+            itemBuilder: (context, index) {
+              final subject = subjects[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => QuizPage(subjectId: subject['id']),
+                    ),
+                  );
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.amber,
+                    borderRadius: BorderRadius.circular(12.0),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.5),
+                        spreadRadius: 2,
+                        blurRadius: 5,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      subject['name'],
+                      style: TextStyle(
+                        fontSize: 18.0,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class QuizPage extends StatelessWidget {
+  final String subjectId;
+
+  QuizPage({required this.subjectId});
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<List<Map<String, dynamic>>> _fetchQuizzes() async {
+    final quizzesSnapshot = await _firestore
+        .collection('subjects')
+        .doc(subjectId)
+        .collection('quizes')
+        .get();
+    return quizzesSnapshot.docs.map((doc) {
+      return {
+        'id': doc.id,
+        'title': doc['title'],
+      };
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Quizzes"),
+        backgroundColor: Colors.amber,
+      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _fetchQuizzes(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text("Error fetching quizzes."));
+          }
+
+          final quizzes = snapshot.data!;
+          return ListView.builder(
+            padding: EdgeInsets.all(16.0),
+            itemCount: quizzes.length,
+            itemBuilder: (context, index) {
+              final quiz = quizzes[index];
+              return Card(
+                elevation: 4.0,
+                margin: EdgeInsets.symmetric(vertical: 8.0),
+                child: ListTile(
+                  title: Text(quiz['title']),
+                  onTap: () {
+                    // Handle quiz click logic here
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
